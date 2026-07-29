@@ -240,6 +240,7 @@ export default function App() {
         }}
         onSave={handleSaveHost}
         initialHost={editingHost}
+        existingGroups={Array.from(new Set(savedHosts.map((h) => h.group).filter(Boolean) as string[]))}
       />
     </div>
   );

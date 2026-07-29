@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Server, Key, ShieldCheck } from 'lucide-react';
+import { X, Server, Key, ShieldCheck, FolderPlus } from 'lucide-react';
 import { SavedHost } from '../types';
 
 interface ServerModalProps {
@@ -7,13 +7,17 @@ interface ServerModalProps {
   onClose: () => void;
   onSave: (hostData: Omit<SavedHost, 'id' | 'createdAt'>, hostId?: string) => void;
   initialHost?: SavedHost | null;
+  existingGroups?: string[];
 }
+
+const DEFAULT_SUGGESTED_GROUPS = ['root', 'step', 'xgame', 'prod', 'staging', 'database'];
 
 export const ServerModal: React.FC<ServerModalProps> = ({
   isOpen,
   onClose,
   onSave,
   initialHost,
+  existingGroups = [],
 }) => {
   const [name, setName] = useState('');
   const [ip, setIp] = useState('');
@@ -22,6 +26,10 @@ export const ServerModal: React.FC<ServerModalProps> = ({
   const [username, setUsername] = useState('root');
   const [password, setPassword] = useState('');
   const [group, setGroup] = useState('root');
+
+  const allSuggestedGroups = Array.from(
+    new Set([...DEFAULT_SUGGESTED_GROUPS, ...existingGroups])
+  );
 
   useEffect(() => {
     if (initialHost) {
@@ -57,7 +65,7 @@ export const ServerModal: React.FC<ServerModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!ip) return;
-    onSave({ name, ip, port, authType, username, password, group }, initialHost?.id);
+    onSave({ name, ip, port, authType, username, password, group: group.trim() || 'Unassigned' }, initialHost?.id);
     onClose();
   };
 
@@ -180,15 +188,45 @@ export const ServerModal: React.FC<ServerModalProps> = ({
             </div>
           )}
 
+          {/* Group / Category Tag Input with Quick Suggestions */}
           <div className="form-group">
-            <label className="form-label">Group / Tag</label>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
+              <label className="form-label">Host Group (Phân Nhóm)</label>
+              <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Gõ nhóm mới hoặc chọn bên dưới</span>
+            </div>
             <input
               type="text"
               className="form-input"
-              placeholder="e.g. root, prod, xgame"
+              placeholder="e.g. root, prod, xgame, database"
               value={group}
               onChange={(e) => setGroup(e.target.value)}
+              required
             />
+            {/* Group Pills Suggestions */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.45rem' }}>
+              {allSuggestedGroups.map((gName) => (
+                <button
+                  key={gName}
+                  type="button"
+                  style={{
+                    background: group.toLowerCase() === gName.toLowerCase() ? 'rgba(2, 132, 199, 0.25)' : '#0d111a',
+                    border: group.toLowerCase() === gName.toLowerCase() ? '1px solid #0284c7' : '1px solid rgba(255, 255, 255, 0.1)',
+                    color: group.toLowerCase() === gName.toLowerCase() ? '#38bdf8' : '#94a3b8',
+                    borderRadius: '6px',
+                    padding: '0.2rem 0.5rem',
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                  }}
+                  onClick={() => setGroup(gName)}
+                >
+                  <FolderPlus size={11} /> {gName}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
