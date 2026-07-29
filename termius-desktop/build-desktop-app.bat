@@ -63,13 +63,36 @@ if %errorlevel% neq 0 (
     )
 )
 
-echo [*] Kiểm tra môi trường thành công! Đang tiến hành build...
+:: --------------------------------------------------------
+:: 3. Kiểm tra C++ Build Tools (MSVC Linker)
+:: --------------------------------------------------------
+where link.exe >nul 2>nul
+if %errorlevel% neq 0 (
+    if not exist "%ProgramFiles(x86)%\Microsoft Visual Studio" (
+        if not exist "%ProgramFiles%\Microsoft Visual Studio" (
+            echo [!] Cảnh báo: Chưa phát hiện C++ Build Tools (MSVC Linker).
+            echo     Đang tải bộ cài Visual Studio C++ Build Tools tự động...
+            powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vs_BuildTools.exe' -OutFile '%TEMP%\vs_buildtools.exe'" 2>nul
+            
+            if exist "%TEMP%\vs_buildtools.exe" (
+                echo [*] Đang khởi chạy bộ cài Visual Studio C++ Build Tools...
+                "%TEMP%\vs_buildtools.exe" --quiet --wait --norestart --nocache --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended
+                del /f /q "%TEMP%\vs_buildtools.exe" 2>nul
+            ) else (
+                echo [!] Không thể tự động tải C++ Build Tools. Nếu build thất bại, vui lòng tải thủ công tại:
+                echo     https://visualstudio.microsoft.com/visual-cpp-build-tools/
+            )
+        )
+    )
+)
 
-:: 3. Tắt các phiên ứng dụng cũ đang chạy để tránh bị khóa file
+echo [*] Kiểm tra môi trường hoàn tất! Đang tiến hành build...
+
+:: 4. Tắt các phiên ứng dụng cũ đang chạy để tránh bị khóa file
 taskkill /F /IM "Termius Desktop.exe" 2>nul
 taskkill /F /IM "Termius-Setup.exe" 2>nul
 
-:: 4. Build Frontend (React + Vite)
+:: 5. Build Frontend (React + Vite)
 echo [*] [1/2] Biên dịch React Frontend...
 call npm run build
 if %errorlevel% neq 0 (
@@ -79,8 +102,8 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: 5. Build Desktop Native App (Tauri)
-echo [*] [2/2] Đóng gói ứng dụng Windows bằng Tauri...
+:: 6. Build Desktop Native App (Tauri + Auto NSIS Bundler)
+echo [*] [2/2] Đóng gói ứng dụng Windows bằng Tauri (Tự động tải NSIS nếu thiếu)...
 call npx tauri build
 if %errorlevel% neq 0 (
     echo [!] Lỗi: Đóng gói Tauri App thất bại. Vui lòng kiểm tra log lỗi ở trên.
@@ -89,7 +112,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: 6. Kiểm tra file .exe xuất ra
+:: 7. Kiểm tra file .exe xuất ra
 if exist "src-tauri\target\release\bundle\nsis\Termius Desktop_1.0.0_x64-setup.exe" (
     copy /y "src-tauri\target\release\bundle\nsis\Termius Desktop_1.0.0_x64-setup.exe" "Termius-Setup.exe" >nul
 )
