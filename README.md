@@ -24,7 +24,7 @@ Dự án bao gồm 3 thành phần chính:
 
 ---
 
-## 🚀 Hướng dẫn Cài đặt & Sử dụng
+## 🚀 Hướng dẫn Cài đặt & Phục vụ Development
 
 ### 1. Cài đặt Agent trên Server (Linux)
 
@@ -47,9 +47,9 @@ sudo ./run.sh [PORT]
 
 ---
 
-### 2. Chạy ứng dụng Desktop (`termius-desktop`)
+### 2. Chạy ứng dụng Desktop ở chế độ Dev (`termius-desktop`)
 
-Yêu cầu: Node.js (v18+) và Rust compiler.
+Yêu cầu: Node.js (v18+) và Rust compiler toolchain.
 
 ```bash
 cd termius-desktop
@@ -60,7 +60,7 @@ npm install
 # Chạy giao diện ở chế độ Development (Web)
 npm run dev
 
-# Chạy ứng dụng Desktop (Tauri)
+# Chạy ứng dụng Desktop (Tauri Dev Mode)
 npm run tauri dev
 ```
 
@@ -79,11 +79,64 @@ run-cli.bat
 
 ---
 
+## 📦 Hướng dẫn Biên dịch / Build File Thực Thi (.exe & Binary)
+
+### 1. Build File Cài Đặt Desktop App (`.exe` / `.msi`)
+
+Để đóng gói ứng dụng **Termius Desktop** thành file cài đặt Windows `.exe`:
+
+```bash
+cd termius-desktop
+
+# Cài đặt phụ thuộc (nếu chưa cài)
+npm install
+
+# Biên dịch ứng dụng ra file .exe installer
+npm run tauri build
+```
+
+📌 **Vị trí file `.exe` sau khi build thành công:**
+- **File Cài đặt Windows Installer (`.exe` / `.msi`):**  
+  `termius-desktop/src-tauri/target/release/bundle/nsis/`  
+  hoặc `termius-desktop/src-tauri/target/release/bundle/msi/`
+- **File thực thi trực tiếp (`.exe` không qua installer):**  
+  `termius-desktop/src-tauri/target/release/termius-desktop.exe`
+
+---
+
+### 2. Build File CLI Thực Thi (`.exe`)
+
+Để đóng gói công cụ dòng lệnh **CLI** thành file `.exe` chạy trực tiếp trên Windows:
+
+```bash
+cd cli
+cargo build --release
+```
+
+📌 **Vị trí file `.exe` sau khi build:**
+- `cli/target/release/remote-cli.exe` (hoặc `target/release/remote-cli.exe`)
+
+---
+
+### 3. Build Agent Binary (Linux Daemon)
+
+Biên dịch file thực thi cho Agent chạy trên máy chủ Linux:
+
+```bash
+cd agent
+cargo build --release --bin remote-agent
+```
+
+📌 **Vị trí file sau khi build:**
+- `agent/target/release/remote-agent` (hoặc `./target/release/remote-agent`)
+
+---
+
 ## 🛡 Bỏ qua Build & Security (.gitignore)
 
 Dự án tự động loại bỏ các file tạm/biên dịch:
 - Thư mục build Rust: `target/`, `**/target/`
-- Thư mục Node.js: `node_modules/`
+- Thư mục Node.js: `node_modules/`, `**/node_modules/`
 - Thư mục đóng gói Web/Tauri: `dist/`, `build/`
 - File biến môi trường chứa bí mật: `.env`
 
