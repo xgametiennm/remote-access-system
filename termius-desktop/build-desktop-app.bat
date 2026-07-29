@@ -92,7 +92,19 @@ echo [*] Kiểm tra môi trường hoàn tất! Đang tiến hành build...
 taskkill /F /IM "Termius Desktop.exe" 2>nul
 taskkill /F /IM "Termius-Setup.exe" 2>nul
 
-:: 5. Build Frontend (React + Vite)
+:: 5. Kiểm tra và tự động npm install nếu chưa có node_modules
+if not exist "node_modules\" (
+    echo [*] Chưa tìm thấy thư mục node_modules. Đang tự động npm install các thư viện phụ thuộc...
+    call npm install
+    if %errorlevel% neq 0 (
+        echo [!] Lỗi: npm install thất bại. Vui lòng kiểm tra kết nối mạng.
+        echo ======================================================
+        pause
+        exit /b 1
+    )
+)
+
+:: 6. Build Frontend (React + Vite)
 echo [*] [1/2] Biên dịch React Frontend...
 call npm run build
 if %errorlevel% neq 0 (
@@ -102,7 +114,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: 6. Build Desktop Native App (Tauri + Auto NSIS Bundler)
+:: 7. Build Desktop Native App (Tauri + Auto NSIS Bundler)
 echo [*] [2/2] Đóng gói ứng dụng Windows bằng Tauri (Tự động tải NSIS nếu thiếu)...
 call npx tauri build
 if %errorlevel% neq 0 (
@@ -112,7 +124,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: 7. Kiểm tra file .exe xuất ra
+:: 8. Kiểm tra file .exe xuất ra
 if exist "src-tauri\target\release\bundle\nsis\Termius Desktop_1.0.0_x64-setup.exe" (
     copy /y "src-tauri\target\release\bundle\nsis\Termius Desktop_1.0.0_x64-setup.exe" "Termius-Setup.exe" >nul
 )
