@@ -81,44 +81,53 @@ run-cli.bat
 
 ## 📦 Hướng dẫn Biên dịch / Build File Thực Thi (.exe & Binary)
 
-### 1. Build File Cài Đặt Desktop App (`.exe` / `.msi`)
+### 1. Build Quick Installer Desktop App (`Termius-Setup.exe`) — *Cách nhanh nhất trên Windows*
 
-Để đóng gói ứng dụng **Termius Desktop** thành file cài đặt Windows `.exe`:
+Trên Windows, bạn chỉ cần vào thư mục `termius-desktop` và **chạy file `build-desktop-app.bat`**:
 
-```bash
+```cmd
 cd termius-desktop
-
-# Cài đặt phụ thuộc (nếu chưa cài)
-npm install
-
-# Biên dịch ứng dụng ra file .exe installer
-npm run tauri build
+build-desktop-app.bat
 ```
 
-📌 **Vị trí file `.exe` sau khi build thành công:**
-- **File Cài đặt Windows Installer (`.exe` / `.msi`):**  
-  `termius-desktop/src-tauri/target/release/bundle/nsis/`  
-  hoặc `termius-desktop/src-tauri/target/release/bundle/msi/`
-- **File thực thi trực tiếp (`.exe` không qua installer):**  
-  `termius-desktop/src-tauri/target/release/termius-desktop.exe`
+Script sẽ tự động:
+- Tắt các phiên ứng dụng cũ đang chạy để tránh bị khóa file.
+- Biên dịch phần giao diện React (`npm run build`).
+- Đóng gói ứng dụng Windows bằng Tauri (`npx tauri build`).
+- Xuất file cài đặt ngay tại thư mục: `termius-desktop/Termius-Setup.exe`.
 
 ---
 
-### 2. Build File CLI Thực Thi (`.exe`)
+### 2. Build Thủ Công Desktop App (Nâng cao)
 
-Để đóng gói công cụ dòng lệnh **CLI** thành file `.exe` chạy trực tiếp trên Windows:
+Nói cách khác, bạn cũng có thể build bằng lệnh npm thủ công:
+
+```bash
+cd termius-desktop
+npm install
+npm run tauri build
+```
+
+📌 **Vị trí file sau khi build:**
+- File Cài đặt (`.exe` / `.msi`): `termius-desktop/src-tauri/target/release/bundle/nsis/`
+- File thực thi không qua cài đặt: `termius-desktop/src-tauri/target/release/termius-desktop.exe`
+
+---
+
+### 3. Build File CLI Thực Thi (`remote-cli.exe`)
+
+Để đóng gói công cụ dòng lệnh **CLI** thành file `.exe` chạy trên Windows:
 
 ```bash
 cd cli
 cargo build --release
 ```
 
-📌 **Vị trí file `.exe` sau khi build:**
-- `cli/target/release/remote-cli.exe` (hoặc `target/release/remote-cli.exe`)
+📌 **Vị trí file `.exe`:** `cli/target/release/remote-cli.exe`
 
 ---
 
-### 3. Build Agent Binary (Linux Daemon)
+### 4. Build Agent Binary (Linux Daemon)
 
 Biên dịch file thực thi cho Agent chạy trên máy chủ Linux:
 
@@ -127,8 +136,7 @@ cd agent
 cargo build --release --bin remote-agent
 ```
 
-📌 **Vị trí file sau khi build:**
-- `agent/target/release/remote-agent` (hoặc `./target/release/remote-agent`)
+📌 **Vị trí file:** `agent/target/release/remote-agent`
 
 ---
 
