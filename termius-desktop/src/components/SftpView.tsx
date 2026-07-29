@@ -108,11 +108,12 @@ export const SftpView: React.FC<SftpViewProps> = ({ hosts }) => {
       window.location.hostname === 'localhost';
 
     const authType = host.authType || 'agent';
+    const sftpPort = authType === 'agent' && host.port === 23 ? 22 : host.port;
     const authParam = `&auth=${authType}`;
     const userParam = host.username ? `&user=${encodeURIComponent(host.username)}` : '';
     const passParam = host.password ? `&pass=${encodeURIComponent(host.password)}` : '';
 
-    const query = `mode=sftp&target=${host.ip}:${host.port}${authParam}${userParam}${passParam}`;
+    const query = `mode=sftp&target=${host.ip}:${sftpPort}${authParam}${userParam}${passParam}`;
 
     const wsUrl = isTauriNative
       ? `ws://127.0.0.1:18888/ws-proxy?${query}`
@@ -147,7 +148,10 @@ export const SftpView: React.FC<SftpViewProps> = ({ hosts }) => {
   };
 
   const requestRemoteDirectoryList = (path: string) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      setIsRemoteLoading(false);
+      return;
+    }
     setIsRemoteLoading(true);
     setRemotePath(path);
     setSelectedRemoteItem(null);
@@ -166,6 +170,9 @@ export const SftpView: React.FC<SftpViewProps> = ({ hosts }) => {
           };
         });
         setRemoteFileList(formatted);
+      } else if (msg.error) {
+        setRemoteFileList([]);
+        alert(`[-] SFTP Directory Read Error:\n${msg.error}`);
       }
     } else if (msg.type === 'sftp_file_content') {
       setIsReadingFile(false);

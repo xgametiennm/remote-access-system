@@ -10,6 +10,7 @@ use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
     path::Path,
+    time::Duration,
 };
 use tokio::net::TcpListener;
 use tokio_tungstenite::{accept_hdr_async, connect_async, tungstenite::Message};
@@ -190,6 +191,7 @@ async fn handle_ssh_password_proxy(
             }
         };
 
+        sess.set_timeout(5000);
         sess.set_tcp_stream(tcp);
         if let Err(e) = sess.handshake() {
             let _ = tx_output.send(format!("\x1b[31m[-] SSH Handshake failed: {}\x1b[0m\r\n", e));
@@ -333,11 +335,14 @@ async fn handle_sftp_proxy(
             }
         };
 
+        // Set 5-second socket timeout to prevent indefinite hanging on non-SSH ports
+        sess.set_timeout(5000);
         sess.set_tcp_stream(tcp);
+
         if let Err(e) = sess.handshake() {
             let _ = tx_response.send(serde_json::json!({
                 "type": "sftp_list_res",
-                "error": format!("SSH Handshake failed: {}", e)
+                "error": format!("SSH Handshake failed on {}: {}. Make sure SSH service (Port 22) is active.", target, e)
             }));
             return;
         }
@@ -345,7 +350,7 @@ async fn handle_sftp_proxy(
         if let Err(e) = sess.userauth_password(&username, &password) {
             let _ = tx_response.send(serde_json::json!({
                 "type": "sftp_list_res",
-                "error": format!("SSH Auth failed for user '{}': {}", username, e)
+                "error": format!("SSH Authentication failed for user '{}': {}", username, e)
             }));
             return;
         }
