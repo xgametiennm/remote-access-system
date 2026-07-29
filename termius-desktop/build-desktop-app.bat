@@ -5,7 +5,14 @@ echo   BUILDING TERMIUS DESKTOP NATIVE WINDOW APP (.EXE)
 echo ======================================================
 
 :: --------------------------------------------------------
-:: 1. Kiểm tra & Tự động tải/cài đặt Node.js / npm nếu thiếu
+:: 1. Tắt các phiên ứng dụng cũ & Xóa file cài đặt cũ
+:: --------------------------------------------------------
+taskkill /F /IM "Termius Desktop.exe" 2>nul
+taskkill /F /IM "Termius-Setup.exe" 2>nul
+if exist "Termius-Setup.exe" del /f /q "Termius-Setup.exe" 2>nul
+
+:: --------------------------------------------------------
+:: 2. Kiểm tra & Tự động tải/cài đặt Node.js / npm nếu thiếu
 :: --------------------------------------------------------
 where npm >nul 2>nul
 if %errorlevel% equ 0 goto CHECK_RUST
@@ -36,7 +43,7 @@ exit /b 1
 
 :CHECK_RUST
 :: --------------------------------------------------------
-:: 2. Kiểm tra & Tự động tải/cài đặt Rust Compiler (cargo) nếu thiếu
+:: 3. Kiểm tra & Tự động tải/cài đặt Rust Compiler (cargo) nếu thiếu
 :: --------------------------------------------------------
 where cargo >nul 2>nul
 if %errorlevel% equ 0 goto CHECK_BUILD_TOOLS
@@ -67,7 +74,7 @@ exit /b 1
 
 :CHECK_BUILD_TOOLS
 :: --------------------------------------------------------
-:: 3. Kiểm tra C++ Build Tools (MSVC Linker)
+:: 4. Kiểm tra C++ Build Tools (MSVC Linker)
 :: --------------------------------------------------------
 where link.exe >nul 2>nul
 if %errorlevel% equ 0 goto START_BUILD
@@ -86,10 +93,6 @@ if exist "%TEMP%\vs_buildtools.exe" (
 
 :START_BUILD
 echo [*] Kiểm tra môi trường hoàn tất! Đang tiến hành build...
-
-:: 4. Tắt các phiên ứng dụng cũ đang chạy để tránh bị khóa file
-taskkill /F /IM "Termius Desktop.exe" 2>nul
-taskkill /F /IM "Termius-Setup.exe" 2>nul
 
 :: 5. Kiểm tra và tự động npm install nếu chưa có node_modules
 if exist "node_modules" goto BUILD_FRONTEND
@@ -124,24 +127,14 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: 8. Tìm và copy file Termius-Setup.exe từ tất cả thư mục target có thể
+:: 8. Tìm và copy file mới tạo ra Termius-Setup.exe
 if exist "src-tauri\target\release\bundle\nsis\Termius Desktop_1.0.0_x64-setup.exe" (
-    copy /y "src-tauri\target\release\bundle\nsis\Termius Desktop_1.0.0_x64-setup.exe" "Termius-Setup.exe" >nul
-)
-
-if exist "%USERPROFILE%\.cargo_build_termius\release\bundle\nsis\Termius Desktop_1.0.0_x64-setup.exe" (
-    copy /y "%USERPROFILE%\.cargo_build_termius\release\bundle\nsis\Termius Desktop_1.0.0_x64-setup.exe" "Termius-Setup.exe" >nul
-)
-
-if not exist "Termius-Setup.exe" (
-    for /r "src-tauri" %%F in (*setup.exe) do (
-        copy /y "%%F" "Termius-Setup.exe" >nul
-    )
-)
-
-if not exist "Termius-Setup.exe" (
-    for /r "%USERPROFILE%\.cargo_build_termius" %%F in (*setup.exe) do (
-        copy /y "%%F" "Termius-Setup.exe" >nul
+    copy /y "src-tauri\target\release\bundle\nsis\Termius Desktop_1.0.0_x64-setup.exe" "Termius-Setup.exe"
+) else if exist "%USERPROFILE%\.cargo_build_termius\release\bundle\nsis\Termius Desktop_1.0.0_x64-setup.exe" (
+    copy /y "%USERPROFILE%\.cargo_build_termius\release\bundle\nsis\Termius Desktop_1.0.0_x64-setup.exe" "Termius-Setup.exe"
+) else (
+    for /r "src-tauri\target" %%F in (*setup.exe) do (
+        copy /y "%%F" "Termius-Setup.exe"
     )
 )
 
