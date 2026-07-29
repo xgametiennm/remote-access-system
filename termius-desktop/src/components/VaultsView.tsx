@@ -235,7 +235,7 @@ export const VaultsView: React.FC<VaultsViewProps> = ({
                         {host.ip} {host.name ? `- ${host.name}` : ''}
                       </div>
                       <div className="card-subtitle">
-                        ssh, telnet, {host.group ? host.group.toLowerCase() : 'root'}
+                        {host.authType === 'password' ? `ssh password (${host.username || 'root'}@${host.port})` : `agent direct (port ${host.port})`}, {host.group ? host.group.toLowerCase() : 'root'}
                       </div>
                     </div>
 

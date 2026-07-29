@@ -59,7 +59,14 @@ export default function App() {
   };
 
   // Allow creating multiple parallel SSH tab sessions for the SAME server
-  const createSession = (title: string, ip: string, port: number) => {
+  const createSession = (
+    title: string,
+    ip: string,
+    port: number,
+    authType: 'agent' | 'password' = 'agent',
+    username?: string,
+    password?: string
+  ) => {
     const sameIpSessions = sessions.filter((s) => s.ip === ip && s.port === port);
     const tabTitle = sameIpSessions.length > 0 ? `${title} (${sameIpSessions.length})` : title;
 
@@ -68,6 +75,9 @@ export default function App() {
       title: tabTitle,
       ip,
       port,
+      authType,
+      username,
+      password,
       connectedAt: new Date().toISOString(),
       status: 'connecting',
     };
@@ -79,7 +89,7 @@ export default function App() {
 
   const handleSelectHost = (host: SavedHost) => {
     const title = host.name ? `${host.ip} - ${host.name}` : host.ip;
-    createSession(title, host.ip, host.port);
+    createSession(title, host.ip, host.port, host.authType || 'agent', host.username, host.password);
   };
 
   const handleOpenAddModal = () => {

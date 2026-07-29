@@ -147,9 +147,16 @@ export const TerminalTab: React.FC<TerminalTabProps> = ({
       window.location.hostname === 'tauri.localhost' ||
       window.location.hostname === 'localhost';
 
+    const authType = session.authType || 'agent';
+    const authParam = `&auth=${authType}`;
+    const userParam = session.username ? `&user=${encodeURIComponent(session.username)}` : '';
+    const passParam = session.password ? `&pass=${encodeURIComponent(session.password)}` : '';
+
+    const query = `target=${session.ip}:${session.port}${authParam}${userParam}${passParam}`;
+
     const wsUrl = isTauriNative
-      ? `ws://127.0.0.1:18888/ws-proxy?target=${session.ip}:${session.port}`
-      : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws-proxy?target=${session.ip}:${session.port}`;
+      ? `ws://127.0.0.1:18888/ws-proxy?${query}`
+      : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws-proxy?${query}`;
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
