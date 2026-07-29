@@ -444,6 +444,11 @@ export const TerminalTab: React.FC<TerminalTabProps> = ({
         display: isActive ? 'block' : 'none',
         height: '100%',
         width: '100%',
+        paddingLeft: '5px',
+        paddingBottom: '10px',
+        boxSizing: 'border-box',
+        background: '#0c1017',
+        overflow: 'hidden',
       }}
     />
   );
