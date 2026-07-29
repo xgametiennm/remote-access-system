@@ -1,0 +1,38 @@
+# Rust build targets
+/target/
+/target_build/
+**/*.rs.bk
+
+# Node.js & Web dependencies and build outputs
+node_modules/
+**/node_modules/
+dist/
+build/
+.out/
+.next/
+.cache/
+
+# Executables
+*.exe
+*.dll
+*.so
+*.dylib
+*.pdb
+
+# Environment & Configs
+.env
+.env.*
+!.env.example
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

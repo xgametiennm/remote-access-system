@@ -1,0 +1,22 @@
+[package]
+name = "termius-desktop-app"
+version = "1.0.0"
+description = "Termius Desktop SSH & Remote PTY Client"
+authors = ["Apex Team"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.6", features = ["shell-open"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.38", features = ["full"] }
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
+url = "2.5"
+tracing = "0.1"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
