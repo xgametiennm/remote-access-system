@@ -203,10 +203,10 @@ export default function App() {
         )}
 
         {activeTabId === 'sftp' && (
-          <div className="empty-tab-state" style={{ background: '#f4f6f8', color: '#334155' }}>
+          <div className="empty-tab-state" style={{ background: '#0d111a', color: '#e6edf3' }}>
             <Folder size={64} color="#0284c7" style={{ opacity: 0.8 }} />
             <h2 style={{ fontWeight: 600 }}>SFTP File Manager</h2>
-            <p style={{ fontSize: '0.88rem' }}>Select a host in Vaults to start SFTP file transfer session.</p>
+            <p style={{ fontSize: '0.88rem', color: '#94a3b8' }}>Select a host in Vaults to start SFTP file transfer session.</p>
           </div>
         )}
 
