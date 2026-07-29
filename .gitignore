@@ -1,13 +1,17 @@
-# Rust build targets
-/target/
-/target_build/
+# Rust build targets (recursive)
+target/
+**/target/
+target_build/
+**/target_build/
 **/*.rs.bk
 
 # Node.js & Web dependencies and build outputs
 node_modules/
 **/node_modules/
 dist/
+**/dist/
 build/
+**/build/
 .out/
 .next/
 .cache/
