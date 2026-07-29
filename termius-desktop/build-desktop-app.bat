@@ -124,9 +124,25 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: 8. Kiểm tra file .exe xuất ra
+:: 8. Tìm và copy file Termius-Setup.exe từ tất cả thư mục target có thể
 if exist "src-tauri\target\release\bundle\nsis\Termius Desktop_1.0.0_x64-setup.exe" (
     copy /y "src-tauri\target\release\bundle\nsis\Termius Desktop_1.0.0_x64-setup.exe" "Termius-Setup.exe" >nul
+)
+
+if exist "%USERPROFILE%\.cargo_build_termius\release\bundle\nsis\Termius Desktop_1.0.0_x64-setup.exe" (
+    copy /y "%USERPROFILE%\.cargo_build_termius\release\bundle\nsis\Termius Desktop_1.0.0_x64-setup.exe" "Termius-Setup.exe" >nul
+)
+
+if not exist "Termius-Setup.exe" (
+    for /r "src-tauri" %%F in (*setup.exe) do (
+        copy /y "%%F" "Termius-Setup.exe" >nul
+    )
+)
+
+if not exist "Termius-Setup.exe" (
+    for /r "%USERPROFILE%\.cargo_build_termius" %%F in (*setup.exe) do (
+        copy /y "%%F" "Termius-Setup.exe" >nul
+    )
 )
 
 if exist "Termius-Setup.exe" (

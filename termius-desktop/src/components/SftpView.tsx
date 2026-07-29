@@ -9,16 +9,21 @@ import {
   Image as ImageIcon,
   File,
   RotateCw,
-  CornerLeftUp,
+  ChevronRight,
+  ChevronLeft,
+  ChevronDown,
   FolderPlus,
   Upload,
   Download,
   Trash2,
   Edit3,
   Server,
-  ArrowRight,
+  Search,
+  Monitor,
   Loader2,
-  HardDrive,
+  ArrowUp,
+  Link as LinkIcon,
+  Filter,
 } from 'lucide-react';
 
 export interface SftpItem {
@@ -28,23 +33,46 @@ export interface SftpItem {
   size: number;
   modified: string;
   permissions?: string;
+  kind?: string;
 }
+
+// Sample Local File System items (matching workspace environment)
+const LOCAL_SAMPLE_ITEMS: SftpItem[] = [
+  { name: 'agent', path: '/agent', isDir: true, size: 0, modified: '7/29/2026, 9:45 AM', kind: 'folder' },
+  { name: 'cli', path: '/cli', isDir: true, size: 0, modified: '7/29/2026, 9:39 AM', kind: 'folder' },
+  { name: 'relay-server', path: '/relay-server', isDir: true, size: 0, modified: '7/29/2026, 9:39 AM', kind: 'folder' },
+  { name: 'target', path: '/target', isDir: true, size: 0, modified: '7/29/2026, 9:40 AM', kind: 'folder' },
+  { name: 'target_build', path: '/target_build', isDir: true, size: 0, modified: '7/29/2026, 9:42 AM', kind: 'folder' },
+  { name: 'web-ui', path: '/web-ui', isDir: true, size: 0, modified: '7/29/2026, 9:41 AM', kind: 'folder' },
+  { name: 'Cargo.lock', path: '/Cargo.lock', isDir: false, size: 50690, modified: '7/29/2026, 9:58 AM', kind: 'lock' },
+  { name: 'Cargo.toml', path: '/Cargo.toml', isDir: false, size: 730, modified: '7/29/2026, 9:42 AM', kind: 'toml' },
+  { name: 'docker-compose.yml', path: '/docker-compose.yml', isDir: false, size: 425, modified: '7/29/2026, 9:46 AM', kind: 'yml' },
+  { name: 'Dockerfile.relay', path: '/Dockerfile.relay', isDir: false, size: 493, modified: '7/29/2026, 9:46 AM', kind: 'relay' },
+  { name: 'Dockerfile.webui', path: '/Dockerfile.webui', isDir: false, size: 331, modified: '7/29/2026, 9:46 AM', kind: 'webui' },
+  { name: 'nginx.conf', path: '/nginx.conf', isDir: false, size: 805, modified: '7/29/2026, 9:46 AM', kind: 'conf' },
+  { name: 'README.md', path: '/README.md', isDir: false, size: 2048, modified: '7/29/2026, 9:51 AM', kind: 'md' },
+];
 
 interface SftpViewProps {
   hosts: SavedHost[];
-  onSelectHostToConnect?: (host: SavedHost) => void;
 }
 
 export const SftpView: React.FC<SftpViewProps> = ({ hosts }) => {
+  // Remote Pane States
   const [selectedHostId, setSelectedHostId] = useState<string>(() => hosts[0]?.id || '');
   const [activeHost, setActiveHost] = useState<SavedHost | null>(() => hosts[0] || null);
-  const [currentPath, setCurrentPath] = useState<string>('/root');
-  const [pathInput, setPathInput] = useState<string>('/root');
-  const [fileList, setFileList] = useState<SftpItem[]>([]);
-  const [selectedItem, setSelectedItem] = useState<SftpItem | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [statusMessage, setStatusMessage] = useState<string>('Ready to connect.');
+  const [remotePath, setRemotePath] = useState<string>('/usr/local');
+  const [remoteFileList, setRemoteFileList] = useState<SftpItem[]>([]);
+  const [selectedRemoteItem, setSelectedRemoteItem] = useState<SftpItem | null>(null);
+  const [isRemoteLoading, setIsRemoteLoading] = useState<boolean>(false);
+  const [isRemoteConnected, setIsRemoteConnected] = useState<boolean>(false);
+  const [remoteFilter, setRemoteFilter] = useState<string>('');
+
+  // Local Pane States
+  const [localPath, setLocalPath] = useState<string>('D: > Research > Supper web > remote-access-system');
+  const [localFileList, setLocalFileList] = useState<SftpItem[]>(LOCAL_SAMPLE_ITEMS);
+  const [selectedLocalItem, setSelectedLocalItem] = useState<SftpItem | null>(LOCAL_SAMPLE_ITEMS[0]);
+  const [localFilter, setLocalFilter] = useState<string>('');
 
   // Editor Modal States
   const [isEditorOpen, setIsEditorOpen] = useState<boolean>(false);
@@ -55,7 +83,6 @@ export const SftpView: React.FC<SftpViewProps> = ({ hosts }) => {
 
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Sync active host when selected ID changes
   useEffect(() => {
     const found = hosts.find((h) => h.id === selectedHostId);
     if (found) {
@@ -64,15 +91,14 @@ export const SftpView: React.FC<SftpViewProps> = ({ hosts }) => {
   }, [selectedHostId, hosts]);
 
   // Connect SFTP Session over WebSocket
-  const connectSftpSession = (host: SavedHost, targetPath: string = '/root') => {
+  const connectSftpSession = (host: SavedHost, targetPath: string = '/usr/local') => {
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
 
-    setIsLoading(true);
-    setIsConnected(false);
-    setStatusMessage(`Connecting SFTP session to ${host.ip}:${host.port}...`);
+    setIsRemoteLoading(true);
+    setIsRemoteConnected(false);
 
     const isTauriNative =
       window.location.protocol === 'tauri:' ||
@@ -96,9 +122,8 @@ export const SftpView: React.FC<SftpViewProps> = ({ hosts }) => {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      setIsConnected(true);
-      setStatusMessage(`[✔] SFTP Session Connected to ${host.ip}`);
-      requestDirectoryList(targetPath);
+      setIsRemoteConnected(true);
+      requestRemoteDirectoryList(targetPath);
     };
 
     ws.onmessage = (event) => {
@@ -106,39 +131,41 @@ export const SftpView: React.FC<SftpViewProps> = ({ hosts }) => {
         const msg = JSON.parse(event.data);
         handleIncomingSftpMessage(msg);
       } catch (e) {
-        // Raw message handling
+        // Raw handling
       }
     };
 
     ws.onerror = () => {
-      setIsLoading(false);
-      setIsConnected(false);
-      setStatusMessage(`[-] Failed to connect SFTP session on port ${host.port}`);
+      setIsRemoteLoading(false);
+      setIsRemoteConnected(false);
     };
 
     ws.onclose = () => {
-      setIsLoading(false);
-      setIsConnected(false);
+      setIsRemoteLoading(false);
+      setIsRemoteConnected(false);
     };
   };
 
-  const requestDirectoryList = (path: string) => {
+  const requestRemoteDirectoryList = (path: string) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    setIsLoading(true);
-    setCurrentPath(path);
-    setPathInput(path);
-    setSelectedItem(null);
+    setIsRemoteLoading(true);
+    setRemotePath(path);
+    setSelectedRemoteItem(null);
     wsRef.current.send(JSON.stringify({ type: 'sftp_list', path }));
   };
 
   const handleIncomingSftpMessage = (msg: any) => {
     if (msg.type === 'sftp_list_res') {
-      setIsLoading(false);
+      setIsRemoteLoading(false);
       if (msg.items && Array.isArray(msg.items)) {
-        setFileList(msg.items);
-        setStatusMessage(`Loaded ${msg.items.length} items in ${msg.path}`);
-      } else if (msg.error) {
-        setStatusMessage(`[-] Error: ${msg.error}`);
+        const formatted = msg.items.map((item: any) => {
+          const ext = item.name.split('.').pop()?.toLowerCase() || '';
+          return {
+            ...item,
+            kind: item.isDir ? 'folder' : ext,
+          };
+        });
+        setRemoteFileList(formatted);
       }
     } else if (msg.type === 'sftp_file_content') {
       setIsReadingFile(false);
@@ -146,30 +173,32 @@ export const SftpView: React.FC<SftpViewProps> = ({ hosts }) => {
     } else if (msg.type === 'sftp_action_res') {
       setIsSavingFile(false);
       if (msg.success) {
-        setStatusMessage(`[✔] ${msg.message || 'Operation successful'}`);
         if (isEditorOpen) {
           setIsEditorOpen(false);
         }
-        requestDirectoryList(currentPath);
+        requestRemoteDirectoryList(remotePath);
       } else {
         alert(`[-] SFTP Error: ${msg.error || 'Operation failed'}`);
-        setStatusMessage(`[-] Error: ${msg.error}`);
       }
     }
   };
 
-  const handleNavigateUp = () => {
-    if (currentPath === '/' || currentPath === '') return;
-    const parts = currentPath.split('/').filter(Boolean);
+  const handleRemoteNavigateUp = () => {
+    if (remotePath === '/' || remotePath === '') return;
+    const parts = remotePath.split('/').filter(Boolean);
     parts.pop();
     const parentPath = '/' + parts.join('/');
-    requestDirectoryList(parentPath || '/');
+    requestRemoteDirectoryList(parentPath || '/');
   };
 
-  const handleOpenFolder = (item: SftpItem) => {
+  const handleRemoteOpenFolder = (item: SftpItem) => {
+    if (item.name === '..') {
+      handleRemoteNavigateUp();
+      return;
+    }
     if (item.isDir) {
-      const target = currentPath === '/' ? `/${item.name}` : `${currentPath}/${item.name}`;
-      requestDirectoryList(target);
+      const target = remotePath === '/' ? `/${item.name}` : `${remotePath}/${item.name}`;
+      requestRemoteDirectoryList(target);
     } else {
       handleOpenFileEditor(item);
     }
@@ -177,7 +206,7 @@ export const SftpView: React.FC<SftpViewProps> = ({ hosts }) => {
 
   const handleOpenFileEditor = (item: SftpItem) => {
     if (item.isDir) return;
-    const fullPath = currentPath === '/' ? `/${item.name}` : `${currentPath}/${item.name}`;
+    const fullPath = remotePath === '/' ? `/${item.name}` : `${remotePath}/${item.name}`;
     setEditingFilePath(fullPath);
     setEditingContent('');
     setIsEditorOpen(true);
@@ -194,391 +223,403 @@ export const SftpView: React.FC<SftpViewProps> = ({ hosts }) => {
     wsRef.current.send(JSON.stringify({ type: 'sftp_write_file', path, content: newContent }));
   };
 
-  const handleCreateFolder = () => {
+  const handleCreateRemoteFolder = () => {
     const folderName = prompt('Enter new folder name:');
     if (!folderName || !folderName.trim()) return;
 
-    const newPath = currentPath === '/' ? `/${folderName.trim()}` : `${currentPath}/${folderName.trim()}`;
+    const newPath = remotePath === '/' ? `/${folderName.trim()}` : `${remotePath}/${folderName.trim()}`;
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'sftp_mkdir', path: newPath }));
     }
   };
 
-  const handleDeleteItem = (item: SftpItem) => {
+  const handleDeleteRemoteItem = (item: SftpItem) => {
     if (!confirm(`Are you sure you want to delete "${item.name}"?`)) return;
 
-    const fullPath = currentPath === '/' ? `/${item.name}` : `${currentPath}/${item.name}`;
+    const fullPath = remotePath === '/' ? `/${item.name}` : `${remotePath}/${item.name}`;
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'sftp_delete', path: fullPath, isDir: item.isDir }));
     }
   };
 
-  const handleUploadFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const content = evt.target?.result as string;
-      const targetPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
-
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        setStatusMessage(`Uploading ${file.name}...`);
-        wsRef.current.send(JSON.stringify({ type: 'sftp_write_file', path: targetPath, content }));
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleDownloadItem = (item: SftpItem) => {
-    if (item.isDir) {
-      alert('Downloading entire folder is not supported directly. Please download files individually.');
-      return;
-    }
-    handleOpenFileEditor(item);
-  };
-
   const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 B';
+    if (!bytes || bytes === 0) return '--';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   const getFileIcon = (item: SftpItem) => {
-    if (item.isDir) return <Folder size={18} color="#0284c7" />;
-    const ext = item.name.split('.').pop()?.toLowerCase() || '';
-    if (['png', 'jpg', 'jpeg', 'svg', 'gif', 'webp'].includes(ext)) {
-      return <ImageIcon size={18} color="#a855f7" />;
+    if (item.name === '..') return <Folder size={16} color="#38bdf8" />;
+    if (item.isDir) return <Folder size={16} color="#38bdf8" />;
+    const ext = item.kind || item.name.split('.').pop()?.toLowerCase() || '';
+    if (['png', 'jpg', 'jpeg', 'svg', 'gif'].includes(ext)) {
+      return <ImageIcon size={16} color="#a855f7" />;
     }
     if (['zip', 'tar', 'gz', '7z', 'rar'].includes(ext)) {
-      return <FileArchive size={18} color="#f59e0b" />;
+      return <FileArchive size={16} color="#f59e0b" />;
     }
     if (['js', 'ts', 'tsx', 'rs', 'py', 'sh', 'json', 'html', 'css'].includes(ext)) {
-      return <FileCode size={18} color="#00e676" />;
+      return <FileCode size={16} color="#00e676" />;
     }
-    if (['txt', 'md', 'env', 'conf', 'log'].includes(ext)) {
-      return <FileText size={18} color="#38bdf8" />;
+    if (['txt', 'md', 'env', 'conf', 'log', 'lock', 'yml', 'yaml'].includes(ext)) {
+      return <FileText size={16} color="#94a3b8" />;
     }
-    return <File size={18} color="#94a3b8" />;
+    if (ext === 'link') {
+      return <LinkIcon size={16} color="#38bdf8" />;
+    }
+    return <File size={16} color="#94a3b8" />;
   };
 
+  // Render Breadcrumb Parts
+  const renderBreadcrumbs = (pathString: string, isRemote: boolean = false) => {
+    if (isRemote) {
+      const parts = pathString.split('/').filter(Boolean);
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', overflow: 'hidden' }}>
+          <button
+            style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0 2px' }}
+            onClick={handleRemoteNavigateUp}
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <button
+            style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0 2px' }}
+            onClick={() => requestRemoteDirectoryList(remotePath)}
+          >
+            <ChevronRight size={16} />
+          </button>
+
+          {parts.map((p, idx) => {
+            const partialPath = '/' + parts.slice(0, idx + 1).join('/');
+            return (
+              <React.Fragment key={partialPath}>
+                <span style={{ color: '#64748b', fontSize: '0.8rem' }}>/</span>
+                <span
+                  style={{
+                    color: idx === parts.length - 1 ? '#e6edf3' : '#94a3b8',
+                    fontWeight: idx === parts.length - 1 ? 600 : 400,
+                    cursor: 'pointer',
+                    fontSize: '0.82rem',
+                  }}
+                  onClick={() => requestRemoteDirectoryList(partialPath)}
+                >
+                  {p}
+                </span>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // Local Breadcrumb
+    const localParts = ['D:', 'Research', 'Supper web', 'remote-access-system'];
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', overflow: 'hidden' }}>
+        <button style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0 2px' }}>
+          <ChevronLeft size={16} />
+        </button>
+        <button style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '0 2px' }}>
+          <ChevronRight size={16} />
+        </button>
+        <Folder size={15} color="#38bdf8" />
+        {localParts.map((p, idx) => (
+          <React.Fragment key={p}>
+            {idx > 0 && <span style={{ color: '#64748b', fontSize: '0.8rem' }}>&gt;</span>}
+            <span style={{ color: idx === localParts.length - 1 ? '#e6edf3' : '#94a3b8', fontSize: '0.82rem' }}>
+              {p}
+            </span>
+          </React.Fragment>
+        ))}
+      </div>
+    );
+  };
+
+  const filteredLocalList = localFileList.filter((i) => i.name.toLowerCase().includes(localFilter.toLowerCase()));
+  const filteredRemoteList = remoteFileList.filter((i) => i.name.toLowerCase().includes(remoteFilter.toLowerCase()));
+
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0d111a', color: '#e6edf3', height: '100%' }}>
-      {/* Top Host Connection Header */}
-      <div
-        style={{
-          padding: '0.85rem 1.25rem',
-          background: '#101624',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.95rem' }}>
-            <HardDrive size={20} color="#0284c7" />
-            <span>SFTP Remote File Explorer</span>
+    <div style={{ flex: 1, display: 'flex', height: '100%', background: '#0d111a', color: '#e6edf3', overflow: 'hidden' }}>
+      {/* ---------------------------------------------------- */}
+      {/* LEFT PANE: LOCAL COMPUTER                            */}
+      {/* ---------------------------------------------------- */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid rgba(255, 255, 255, 0.08)' }}>
+        {/* Top Header Bar */}
+        <div
+          style={{
+            padding: '0.6rem 1rem',
+            background: '#101624',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.88rem' }}>
+            <Monitor size={17} color="#38bdf8" />
+            <span>Local</span>
           </div>
 
-          {/* Host Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '1rem' }}>
-            <label style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Target Server:</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#94a3b8', fontSize: '0.8rem', cursor: 'pointer' }}>
+              <Search size={14} />
+              <span>Filter</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', color: '#94a3b8', fontSize: '0.8rem', cursor: 'pointer' }}>
+              <span>Actions</span>
+              <ChevronDown size={14} />
+            </div>
+          </div>
+        </div>
+
+        {/* Breadcrumb Navigation Bar */}
+        <div
+          style={{
+            padding: '0.45rem 1rem',
+            background: '#161e30',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          }}
+        >
+          {renderBreadcrumbs(localPath, false)}
+        </div>
+
+        {/* Local File Table */}
+        <div style={{ flex: 1, overflowY: 'auto', background: '#0d111a' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.08)', color: '#94a3b8', textAlign: 'left', background: '#101624' }}>
+                <th style={{ padding: '0.5rem 0.85rem', fontWeight: 600 }}>
+                  Name <ArrowUp size={11} style={{ display: 'inline', marginLeft: '3px' }} />
+                </th>
+                <th style={{ padding: '0.5rem 0.85rem', fontWeight: 600, width: '160px' }}>Date Modified</th>
+                <th style={{ padding: '0.5rem 0.85rem', fontWeight: 600, width: '90px' }}>Size</th>
+                <th style={{ padding: '0.5rem 0.85rem', fontWeight: 600, width: '80px' }}>Kind</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* Parent Dir Row */}
+              <tr
+                style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)', cursor: 'pointer' }}
+                onClick={() => setSelectedLocalItem(null)}
+              >
+                <td style={{ padding: '0.45rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Folder size={16} color="#38bdf8" />
+                  <span>..</span>
+                </td>
+                <td style={{ padding: '0.45rem 0.85rem', color: '#94a3b8' }}>--</td>
+                <td style={{ padding: '0.45rem 0.85rem', color: '#94a3b8' }}>--</td>
+                <td style={{ padding: '0.45rem 0.85rem', color: '#94a3b8' }}>--</td>
+              </tr>
+
+              {filteredLocalList.map((item) => {
+                const isSelected = selectedLocalItem?.name === item.name;
+                return (
+                  <tr
+                    key={item.name}
+                    style={{
+                      borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+                      background: isSelected ? '#0284c7' : 'transparent',
+                      color: isSelected ? '#ffffff' : '#e6edf3',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => setSelectedLocalItem(item)}
+                  >
+                    <td style={{ padding: '0.45rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.55rem', fontWeight: item.isDir ? 500 : 400 }}>
+                      {getFileIcon(item)}
+                      <span>{item.name}</span>
+                    </td>
+                    <td style={{ padding: '0.45rem 0.85rem', color: isSelected ? '#f8fafc' : '#94a3b8' }}>{item.modified}</td>
+                    <td style={{ padding: '0.45rem 0.85rem', color: isSelected ? '#f8fafc' : '#94a3b8' }}>{formatFileSize(item.size)}</td>
+                    <td style={{ padding: '0.45rem 0.85rem', color: isSelected ? '#f8fafc' : '#94a3b8' }}>{item.kind}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ---------------------------------------------------- */}
+      {/* RIGHT PANE: REMOTE SERVER (SFTP)                     */}
+      {/* ---------------------------------------------------- */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {/* Top Header Bar with Host Selector */}
+        <div
+          style={{
+            padding: '0.6rem 1rem',
+            background: '#101624',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span
+              style={{
+                background: '#f97316',
+                color: '#fff',
+                borderRadius: '6px',
+                padding: '0.2rem 0.45rem',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+              }}
+            >
+              <Server size={13} />
+              {activeHost ? activeHost.ip : 'Select Server'}
+            </span>
+
             <select
               style={{
                 background: '#161e30',
                 border: '1px solid rgba(255, 255, 255, 0.12)',
                 borderRadius: '6px',
                 color: '#f8fafc',
-                padding: '0.35rem 0.65rem',
-                fontSize: '0.85rem',
+                padding: '0.2rem 0.5rem',
+                fontSize: '0.8rem',
                 outline: 'none',
               }}
               value={selectedHostId}
-              onChange={(e) => setSelectedHostId(e.target.value)}
+              onChange={(e) => {
+                setSelectedHostId(e.target.value);
+                const host = hosts.find((h) => h.id === e.target.value);
+                if (host) connectSftpSession(host, '/usr/local');
+              }}
             >
               {hosts.map((h) => (
                 <option key={h.id} value={h.id}>
-                  {h.ip} {h.name ? `(${h.name})` : ''} - [{h.authType === 'password' ? 'SSH Pass' : 'Agent Direct'}]
+                  {h.ip} {h.name ? `- ${h.name}` : ''}
                 </option>
               ))}
             </select>
 
-            <button
-              style={{
-                background: '#0284c7',
-                color: '#fff',
-                border: 'none',
-                padding: '0.4rem 0.9rem',
-                borderRadius: '6px',
-                fontWeight: 600,
-                fontSize: '0.8rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-              }}
-              onClick={() => activeHost && connectSftpSession(activeHost, currentPath)}
-            >
-              <span>Connect SFTP</span>
-              <ArrowRight size={14} />
-            </button>
-          </div>
-        </div>
-
-        <div style={{ fontSize: '0.78rem', color: isConnected ? '#00e676' : '#94a3b8', fontWeight: 600 }}>
-          {statusMessage}
-        </div>
-      </div>
-
-      {/* Address & Breadcrumbs Bar */}
-      <div
-        style={{
-          padding: '0.65rem 1.25rem',
-          background: '#161e30',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.6rem',
-        }}
-      >
-        <button
-          style={{
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            color: '#94a3b8',
-            padding: '0.35rem 0.6rem',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-          }}
-          onClick={handleNavigateUp}
-          title="Go Up Directory"
-        >
-          <CornerLeftUp size={16} />
-        </button>
-
-        <button
-          style={{
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            color: '#94a3b8',
-            padding: '0.35rem 0.6rem',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-          }}
-          onClick={() => requestDirectoryList(currentPath)}
-          title="Refresh Directory"
-        >
-          <RotateCw size={15} className={isLoading ? 'animate-spin' : ''} />
-        </button>
-
-        {/* Path Bar Form */}
-        <form
-          style={{ flex: 1, display: 'flex' }}
-          onSubmit={(e) => {
-            e.preventDefault();
-            requestDirectoryList(pathInput);
-          }}
-        >
-          <input
-            type="text"
-            style={{
-              flex: 1,
-              background: '#0d111a',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              borderRadius: '6px',
-              color: '#e6edf3',
-              padding: '0.4rem 0.75rem',
-              fontSize: '0.85rem',
-              fontFamily: "'Fira Code', monospace",
-              outline: 'none',
-            }}
-            value={pathInput}
-            onChange={(e) => setPathInput(e.target.value)}
-          />
-        </form>
-      </div>
-
-      {/* Action Toolbar */}
-      <div
-        style={{
-          padding: '0.5rem 1.25rem',
-          background: '#101624',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.6rem',
-        }}
-      >
-        <button
-          style={{
-            background: '#161e30',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            color: '#e6edf3',
-            padding: '0.35rem 0.75rem',
-            borderRadius: '6px',
-            fontSize: '0.8rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-          }}
-          onClick={handleCreateFolder}
-        >
-          <FolderPlus size={15} color="#38bdf8" />
-          <span>New Folder</span>
-        </button>
-
-        <label
-          style={{
-            background: '#161e30',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            color: '#e6edf3',
-            padding: '0.35rem 0.75rem',
-            borderRadius: '6px',
-            fontSize: '0.8rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-          }}
-        >
-          <Upload size={15} color="#00e676" />
-          <span>Upload File</span>
-          <input type="file" style={{ display: 'none' }} onChange={handleUploadFileChange} />
-        </label>
-
-        {selectedItem && (
-          <>
-            {!selectedItem.isDir && (
+            {!isRemoteConnected && activeHost && (
               <button
                 style={{
-                  background: '#161e30',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
-                  color: '#e6edf3',
-                  padding: '0.35rem 0.75rem',
+                  background: '#0284c7',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '0.25rem 0.65rem',
                   borderRadius: '6px',
-                  fontSize: '0.8rem',
+                  fontSize: '0.75rem',
                   fontWeight: 600,
                   cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
                 }}
-                onClick={() => handleOpenFileEditor(selectedItem)}
+                onClick={() => connectSftpSession(activeHost, '/usr/local')}
               >
-                <Edit3 size={15} color="#a855f7" />
-                <span>Edit Content</span>
+                Connect SFTP
               </button>
             )}
-
-            <button
-              style={{
-                background: '#161e30',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
-                color: '#e6edf3',
-                padding: '0.35rem 0.75rem',
-                borderRadius: '6px',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-              }}
-              onClick={() => handleDownloadItem(selectedItem)}
-            >
-              <Download size={15} color="#38bdf8" />
-              <span>Download</span>
-            </button>
-
-            <button
-              style={{
-                background: 'rgba(239, 68, 68, 0.15)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                color: '#ef4444',
-                padding: '0.35rem 0.75rem',
-                borderRadius: '6px',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-              }}
-              onClick={() => handleDeleteItem(selectedItem)}
-            >
-              <Trash2 size={15} />
-              <span>Delete</span>
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* Main File Table Area */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 1.25rem' }}>
-        {isLoading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem', gap: '1rem', color: '#94a3b8' }}>
-            <Loader2 size={36} className="animate-spin" color="#0284c7" />
-            <span>Loading directory contents...</span>
           </div>
-        ) : !isConnected ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem', gap: '1rem', color: '#94a3b8' }}>
-            <Server size={48} color="#94a3b8" />
-            <p>SFTP Session is not connected. Click "Connect SFTP" above to start.</p>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#94a3b8', fontSize: '0.8rem', cursor: 'pointer' }}>
+              <Search size={14} />
+              <span>Filter</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', color: '#94a3b8', fontSize: '0.8rem', cursor: 'pointer' }}>
+              <span>Actions</span>
+              <ChevronDown size={14} />
+            </div>
           </div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.08)', color: '#94a3b8', textAlign: 'left' }}>
-                <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>Name</th>
-                <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600, width: '120px' }}>Size</th>
-                <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600, width: '160px' }}>Modified</th>
-                <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600, width: '120px' }}>Permissions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fileList.map((item) => {
-                const isSelected = selectedItem?.name === item.name;
-                return (
-                  <tr
-                    key={item.name}
-                    style={{
-                      borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
-                      background: isSelected ? 'rgba(2, 132, 199, 0.2)' : 'transparent',
-                      cursor: 'pointer',
-                      transition: 'background 0.15s ease',
-                    }}
-                    onClick={() => setSelectedItem(item)}
-                    onDoubleClick={() => handleOpenFolder(item)}
-                  >
-                    <td style={{ padding: '0.55rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.65rem', fontWeight: item.isDir ? 600 : 400 }}>
-                      {getFileIcon(item)}
-                      <span>{item.name}</span>
-                    </td>
-                    <td style={{ padding: '0.55rem 0.75rem', color: '#94a3b8', fontFamily: "'Fira Code', monospace" }}>
-                      {item.isDir ? '--' : formatFileSize(item.size)}
-                    </td>
-                    <td style={{ padding: '0.55rem 0.75rem', color: '#94a3b8' }}>
-                      {item.modified || '--'}
-                    </td>
-                    <td style={{ padding: '0.55rem 0.75rem', color: '#94a3b8', fontFamily: "'Fira Code', monospace" }}>
-                      {item.permissions || (item.isDir ? 'drwxr-xr-x' : '-rw-r--r--')}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+        </div>
+
+        {/* Breadcrumb Navigation Bar */}
+        <div
+          style={{
+            padding: '0.45rem 1rem',
+            background: '#161e30',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          }}
+        >
+          {renderBreadcrumbs(remotePath, true)}
+        </div>
+
+        {/* Remote File Table */}
+        <div style={{ flex: 1, overflowY: 'auto', background: '#0d111a' }}>
+          {isRemoteLoading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem', gap: '1rem', color: '#94a3b8' }}>
+              <Loader2 size={32} className="animate-spin" color="#0284c7" />
+              <span>Fetching remote directory...</span>
+            </div>
+          ) : !isRemoteConnected ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem', gap: '0.75rem', color: '#94a3b8', textAlign: 'center' }}>
+              <Server size={44} color="#94a3b8" />
+              <p style={{ fontSize: '0.85rem' }}>SFTP session is not connected.</p>
+              <button
+                style={{ background: '#0284c7', color: '#fff', border: 'none', padding: '0.4rem 1rem', borderRadius: '6px', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
+                onClick={() => activeHost && connectSftpSession(activeHost, '/usr/local')}
+              >
+                Connect to {activeHost?.ip || 'Server'}
+              </button>
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.08)', color: '#94a3b8', textAlign: 'left', background: '#101624' }}>
+                  <th style={{ padding: '0.5rem 0.85rem', fontWeight: 600 }}>
+                    Name <ArrowUp size={11} style={{ display: 'inline', marginLeft: '3px' }} />
+                  </th>
+                  <th style={{ padding: '0.5rem 0.85rem', fontWeight: 600, width: '160px' }}>Date Modified</th>
+                  <th style={{ padding: '0.5rem 0.85rem', fontWeight: 600, width: '90px' }}>Size</th>
+                  <th style={{ padding: '0.5rem 0.85rem', fontWeight: 600, width: '80px' }}>Kind</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* Parent Dir Row */}
+                <tr
+                  style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)', cursor: 'pointer' }}
+                  onClick={() => handleRemoteOpenFolder({ name: '..', path: '', isDir: true, size: 0, modified: '' })}
+                >
+                  <td style={{ padding: '0.45rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Folder size={16} color="#38bdf8" />
+                    <span>..</span>
+                  </td>
+                  <td style={{ padding: '0.45rem 0.85rem', color: '#94a3b8' }}>--</td>
+                  <td style={{ padding: '0.45rem 0.85rem', color: '#94a3b8' }}>--</td>
+                  <td style={{ padding: '0.45rem 0.85rem', color: '#94a3b8' }}>--</td>
+                </tr>
+
+                {filteredRemoteList.map((item) => {
+                  const isSelected = selectedRemoteItem?.name === item.name;
+                  return (
+                    <tr
+                      key={item.name}
+                      style={{
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+                        background: isSelected ? '#0284c7' : 'transparent',
+                        color: isSelected ? '#ffffff' : '#e6edf3',
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => setSelectedRemoteItem(item)}
+                      onDoubleClick={() => handleRemoteOpenFolder(item)}
+                    >
+                      <td style={{ padding: '0.45rem 0.85rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', fontWeight: item.isDir ? 500 : 400 }}>
+                          {getFileIcon(item)}
+                          <span>{item.name}</span>
+                        </div>
+                        {item.permissions && (
+                          <div style={{ fontSize: '0.7rem', color: isSelected ? '#e0f2fe' : '#64748b', fontFamily: "'Fira Code', monospace", marginLeft: '1.55rem' }}>
+                            {item.permissions}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '0.45rem 0.85rem', color: isSelected ? '#f8fafc' : '#94a3b8' }}>{item.modified || '--'}</td>
+                      <td style={{ padding: '0.45rem 0.85rem', color: isSelected ? '#f8fafc' : '#94a3b8' }}>{formatFileSize(item.size)}</td>
+                      <td style={{ padding: '0.45rem 0.85rem', color: isSelected ? '#f8fafc' : '#94a3b8' }}>{item.kind || (item.isDir ? 'folder' : 'file')}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
 
       {/* Remote File Text Editor Modal */}
