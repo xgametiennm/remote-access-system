@@ -5,24 +5,62 @@ echo ======================================================
 echo   BUILDING TERMIUS DESKTOP NATIVE WINDOW APP (.EXE)   
 echo ======================================================
 
-:: 1. Kiểm tra môi trường Node.js / npm
+:: --------------------------------------------------------
+:: 1. Kiểm tra & Tự động tải/cài đặt Node.js / npm nếu thiếu
+:: --------------------------------------------------------
 where npm >nul 2>nul
 if %errorlevel% neq 0 (
-    echo [!] Lỗi: Chưa tìm thấy Node.js / npm trên máy tính!
-    echo     Vui lòng tải và cài đặt Node.js (v18+) tại: https://nodejs.org/
-    echo ======================================================
-    pause
-    exit /b 1
+    echo [!] Chưa tìm thấy Node.js / npm. Đang tự động tải về và cài đặt...
+    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.18.0/node-v20.18.0-x64.msi' -OutFile '%TEMP%\node_setup.msi'" 2>nul
+    
+    if exist "%TEMP%\node_setup.msi" (
+        echo [*] Đang tự động cài đặt Node.js (Silent Install)...
+        msiexec /i "%TEMP%\node_setup.msi" /qn /norestart
+        del /f /q "%TEMP%\node_setup.msi" 2>nul
+        set "PATH=%ProgramFiles%\nodejs\;%APPDATA%\npm;%PATH%"
+    )
+
+    where npm >nul 2>nul
+    if %errorlevel% neq 0 (
+        echo ======================================================
+        echo [!] Lỗi: Tự động cài đặt Node.js thất bại.
+        echo     Vui lòng tải và cài đặt thủ công Node.js (v18+) tại:
+        echo     https://nodejs.org/
+        echo ======================================================
+        pause
+        exit /b 1
+    ) else (
+        echo [✔] Cài đặt Node.js tự động thành công!
+    )
 )
 
-:: 2. Kiểm tra môi trường Rust / Cargo
+:: --------------------------------------------------------
+:: 2. Kiểm tra & Tự động tải/cài đặt Rust Compiler (cargo) nếu thiếu
+:: --------------------------------------------------------
 where cargo >nul 2>nul
 if %errorlevel% neq 0 (
-    echo [!] Lỗi: Chưa tìm thấy Rust Compiler (cargo) trên máy tính!
-    echo     Vui lòng tải và cài đặt Rust tại: https://rustup.rs/
-    echo ======================================================
-    pause
-    exit /b 1
+    echo [!] Chưa tìm thấy Rust (cargo). Đang tự động tải về toolchain rustup...
+    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://win.rustup.rs/x86_64' -OutFile '%TEMP%\rustup-init.exe'" 2>nul
+
+    if exist "%TEMP%\rustup-init.exe" (
+        echo [*] Đang tự động cài đặt Rust Compiler (Silent Install)...
+        "%TEMP%\rustup-init.exe" -y --default-host x86_64-pc-windows-msvc --default-toolchain stable
+        del /f /q "%TEMP%\rustup-init.exe" 2>nul
+        set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
+    )
+
+    where cargo >nul 2>nul
+    if %errorlevel% neq 0 (
+        echo ======================================================
+        echo [!] Lỗi: Tự động cài đặt Rust (cargo) thất bại.
+        echo     Vui lòng tải và cài đặt thủ công Rust tại:
+        echo     https://rustup.rs/
+        echo ======================================================
+        pause
+        exit /b 1
+    ) else (
+        echo [✔] Cài đặt Rust Compiler tự động thành công!
+    )
 )
 
 echo [*] Kiểm tra môi trường thành công! Đang tiến hành build...
