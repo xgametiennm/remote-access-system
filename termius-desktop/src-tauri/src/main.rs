@@ -9,6 +9,7 @@ use ssh2::Session;
 use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
+    path::Path,
 };
 use tokio::net::TcpListener;
 use tokio_tungstenite::{accept_hdr_async, connect_async, tungstenite::Message};
@@ -22,8 +23,20 @@ pub enum ControlMessage {
     PtyResize { rows: u16, cols: u16 },
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SftpFileItem {
+    pub name: String,
+    pub path: String,
+    #[serde(rename = "isDir")]
+    pub is_dir: bool,
+    pub size: u64,
+    pub modified: String,
+    pub permissions: String,
+}
+
 struct SshConnectionParams {
     target: String,
+    mode: String,      // "terminal" or "sftp"
     auth_type: String, // "agent" or "password"
     username: String,
     password: Option<String>,
@@ -52,6 +65,7 @@ async fn run_proxy_server() {
                 let full_url = format!("http://localhost{}", uri);
                 if let Ok(parsed) = Url::parse(&full_url) {
                     let mut target = String::new();
+                    let mut mode = "terminal".to_string();
                     let mut auth_type = "agent".to_string();
                     let mut username = "root".to_string();
                     let mut password = None;
@@ -59,6 +73,8 @@ async fn run_proxy_server() {
                     for (k, v) in parsed.query_pairs() {
                         if k == "target" {
                             target = v.to_string();
+                        } else if k == "mode" {
+                            mode = v.to_string();
                         } else if k == "auth" {
                             auth_type = v.to_string();
                         } else if k == "user" {
@@ -71,6 +87,7 @@ async fn run_proxy_server() {
                     if !target.is_empty() {
                         params_opt = Some(SshConnectionParams {
                             target,
+                            mode,
                             auth_type,
                             username,
                             password,
@@ -90,7 +107,9 @@ async fn run_proxy_server() {
                 None => return,
             };
 
-            if params.auth_type == "password" {
+            if params.mode == "sftp" {
+                handle_sftp_proxy(ws_stream, params).await;
+            } else if params.auth_type == "password" {
                 handle_ssh_password_proxy(ws_stream, params).await;
             } else {
                 handle_agent_direct_proxy(ws_stream, params.target).await;
@@ -274,6 +293,254 @@ async fn handle_ssh_password_proxy(
         _ = send_task => {},
         _ = recv_task => {},
         _ = ssh_task => {},
+    }
+}
+
+async fn handle_sftp_proxy(
+    ws_stream: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+    params: SshConnectionParams,
+) {
+    let (mut client_tx, mut client_rx) = ws_stream.split();
+
+    let target = params.target.clone();
+    let username = params.username.clone();
+    let password = params.password.unwrap_or_default();
+
+    // Connect SSH Session & SFTP in blocking thread
+    let (tx_response, mut rx_response) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
+    let (tx_request, mut rx_request) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
+
+    let sftp_task = tokio::task::spawn_blocking(move || {
+        let tcp = match TcpStream::connect(&target) {
+            Ok(t) => t,
+            Err(e) => {
+                let _ = tx_response.send(serde_json::json!({
+                    "type": "sftp_list_res",
+                    "error": format!("TCP Connection failed to {}: {}", target, e)
+                }));
+                return;
+            }
+        };
+
+        let mut sess = match Session::new() {
+            Ok(s) => s,
+            Err(e) => {
+                let _ = tx_response.send(serde_json::json!({
+                    "type": "sftp_list_res",
+                    "error": format!("SSH Session init failed: {}", e)
+                }));
+                return;
+            }
+        };
+
+        sess.set_tcp_stream(tcp);
+        if let Err(e) = sess.handshake() {
+            let _ = tx_response.send(serde_json::json!({
+                "type": "sftp_list_res",
+                "error": format!("SSH Handshake failed: {}", e)
+            }));
+            return;
+        }
+
+        if let Err(e) = sess.userauth_password(&username, &password) {
+            let _ = tx_response.send(serde_json::json!({
+                "type": "sftp_list_res",
+                "error": format!("SSH Auth failed for user '{}': {}", username, e)
+            }));
+            return;
+        }
+
+        let sftp = match sess.sftp() {
+            Ok(s) => s,
+            Err(e) => {
+                let _ = tx_response.send(serde_json::json!({
+                    "type": "sftp_list_res",
+                    "error": format!("SFTP Subsystem initialization failed: {}", e)
+                }));
+                return;
+            }
+        };
+
+        // Listen for SFTP Commands from client
+        while let Some(req) = rx_request.blocking_recv() {
+            let msg_type = req.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+            match msg_type {
+                "sftp_list" => {
+                    let dir_path = req.get("path").and_then(|v| v.as_str()).unwrap_or("/");
+                    match sftp.readdir(Path::new(dir_path)) {
+                        Ok(entries) => {
+                            let items: Vec<SftpFileItem> = entries
+                                .into_iter()
+                                .map(|(p, stat)| {
+                                    let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                                    let is_dir = stat.is_dir();
+                                    let size = stat.size.unwrap_or(0);
+                                    let permissions = if is_dir { "drwxr-xr-x".to_string() } else { "-rw-r--r--".to_string() };
+                                    let mtime = stat.mtime.unwrap_or(0);
+                                    let modified = format!("{}", mtime);
+
+                                    SftpFileItem {
+                                        name,
+                                        path: p.to_string_lossy().to_string(),
+                                        is_dir,
+                                        size,
+                                        modified,
+                                        permissions,
+                                    }
+                                })
+                                .collect();
+
+                            let _ = tx_response.send(serde_json::json!({
+                                "type": "sftp_list_res",
+                                "path": dir_path,
+                                "items": items
+                            }));
+                        }
+                        Err(e) => {
+                            let _ = tx_response.send(serde_json::json!({
+                                "type": "sftp_list_res",
+                                "path": dir_path,
+                                "error": format!("Failed to read directory {}: {}", dir_path, e)
+                            }));
+                        }
+                    }
+                }
+                "sftp_read_file" => {
+                    let file_path = req.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                    match sftp.open(Path::new(file_path)) {
+                        Ok(mut file) => {
+                            let mut buf = Vec::new();
+                            if let Ok(_) = file.read_to_end(&mut buf) {
+                                let content = String::from_utf8_lossy(&buf).to_string();
+                                let _ = tx_response.send(serde_json::json!({
+                                    "type": "sftp_file_content",
+                                    "path": file_path,
+                                    "content": content
+                                }));
+                            } else {
+                                let _ = tx_response.send(serde_json::json!({
+                                    "type": "sftp_action_res",
+                                    "success": false,
+                                    "error": "Failed to read file bytes"
+                                }));
+                            }
+                        }
+                        Err(e) => {
+                            let _ = tx_response.send(serde_json::json!({
+                                "type": "sftp_action_res",
+                                "success": false,
+                                "error": format!("Failed to open file {}: {}", file_path, e)
+                            }));
+                        }
+                    }
+                }
+                "sftp_write_file" => {
+                    let file_path = req.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                    let content = req.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                    match sftp.create(Path::new(file_path)) {
+                        Ok(mut file) => {
+                            if let Ok(_) = file.write_all(content.as_bytes()) {
+                                let _ = tx_response.send(serde_json::json!({
+                                    "type": "sftp_action_res",
+                                    "success": true,
+                                    "message": format!("Saved {} successfully", file_path)
+                                }));
+                            } else {
+                                let _ = tx_response.send(serde_json::json!({
+                                    "type": "sftp_action_res",
+                                    "success": false,
+                                    "error": "Failed to write file content"
+                                }));
+                            }
+                        }
+                        Err(e) => {
+                            let _ = tx_response.send(serde_json::json!({
+                                "type": "sftp_action_res",
+                                "success": false,
+                                "error": format!("Failed to create file {}: {}", file_path, e)
+                            }));
+                        }
+                    }
+                }
+                "sftp_mkdir" => {
+                    let dir_path = req.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                    match sftp.mkdir(Path::new(dir_path), 0o755) {
+                        Ok(_) => {
+                            let _ = tx_response.send(serde_json::json!({
+                                "type": "sftp_action_res",
+                                "success": true,
+                                "message": format!("Created directory {}", dir_path)
+                            }));
+                        }
+                        Err(e) => {
+                            let _ = tx_response.send(serde_json::json!({
+                                "type": "sftp_action_res",
+                                "success": false,
+                                "error": format!("Failed to create directory: {}", e)
+                            }));
+                        }
+                    }
+                }
+                "sftp_delete" => {
+                    let item_path = req.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                    let is_dir = req.get("isDir").and_then(|v| v.as_bool()).unwrap_or(false);
+
+                    let res = if is_dir {
+                        sftp.rmdir(Path::new(item_path))
+                    } else {
+                        sftp.unlink(Path::new(item_path))
+                    };
+
+                    match res {
+                        Ok(_) => {
+                            let _ = tx_response.send(serde_json::json!({
+                                "type": "sftp_action_res",
+                                "success": true,
+                                "message": format!("Deleted {}", item_path)
+                            }));
+                        }
+                        Err(e) => {
+                            let _ = tx_response.send(serde_json::json!({
+                                "type": "sftp_action_res",
+                                "success": false,
+                                "error": format!("Failed to delete {}: {}", item_path, e)
+                            }));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    });
+
+    // Forward SFTP Responses -> Client WebSocket
+    let send_task = async move {
+        while let Some(json_val) = rx_response.recv().await {
+            let text = json_val.to_string();
+            if client_tx.send(Message::Text(text)).await.is_err() {
+                break;
+            }
+        }
+    };
+
+    // Forward Client WebSocket Requests -> SFTP Task
+    let recv_task = async move {
+        while let Some(Ok(msg)) = client_rx.next().await {
+            if let Message::Text(text) = msg {
+                if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&text) {
+                    if tx_request.send(json_val).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    };
+
+    tokio::select! {
+        _ = send_task => {},
+        _ = recv_task => {},
+        _ = sftp_task => {},
     }
 }
 

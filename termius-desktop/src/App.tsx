@@ -3,6 +3,7 @@ import { TabBar } from './components/TabBar';
 import { VaultsView } from './components/VaultsView';
 import { NewTabView } from './components/NewTabView';
 import { TerminalTab } from './components/TerminalTab';
+import { SftpView } from './components/SftpView';
 import { ServerModal } from './components/AddServerModal';
 import { SavedHost, TabSession } from './types';
 import { Folder } from 'lucide-react';
@@ -212,13 +213,7 @@ export default function App() {
           />
         )}
 
-        {activeTabId === 'sftp' && (
-          <div className="empty-tab-state" style={{ background: '#0d111a', color: '#e6edf3' }}>
-            <Folder size={64} color="#0284c7" style={{ opacity: 0.8 }} />
-            <h2 style={{ fontWeight: 600 }}>SFTP File Manager</h2>
-            <p style={{ fontSize: '0.88rem', color: '#94a3b8' }}>Select a host in Vaults to start SFTP file transfer session.</p>
-          </div>
-        )}
+        {activeTabId === 'sftp' && <SftpView hosts={savedHosts} />}
 
         {/* Terminal Sessions */}
         {sessions.map((session) => (
